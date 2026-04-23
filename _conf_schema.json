@@ -1,0 +1,117 @@
+{
+  "schema": {
+    "api_key": {
+      "type": "string",
+      "description": "Gemini API Key",
+      "default": ""
+    },
+    "model": {
+      "type": "string",
+      "description": "Gemini 图像模型名称",
+      "default": "gemini-3.1-flash-image-preview",
+      "hint": "gemini-3.1-flash-image-preview / gemini-3-pro-image-preview"
+    },
+    "enable_chat_trigger": {
+      "type": "bool",
+      "description": "是否启用聊天触发（非命令触发）",
+      "default": true
+    },
+    "chat_trigger_text2img": {
+      "type": "string",
+      "description": "文生图聊天触发词",
+      "default": "帮我画"
+    },
+    "chat_trigger_img2img": {
+      "type": "string",
+      "description": "图生图聊天触发词",
+      "default": "帮我改图"
+    },
+    "draw_command": {
+      "type": "string",
+      "description": "文生图命令名",
+      "default": "draw"
+    },
+    "imgedit_command": {
+      "type": "string",
+      "description": "图生图命令名",
+      "default": "imgedit"
+    },
+    "drawraw_command": {
+      "type": "string",
+      "description": "跳过 LLM 扩写直接生图命令名",
+      "default": "drawraw"
+    },
+    "style_preset": {
+      "type": "string",
+      "description": "默认风格预设：auto / realistic / anime / watercolor / cinematic / illustration",
+      "default": "auto"
+    },
+    "custom_style_prompt": {
+      "type": "string",
+      "description": "自定义风格提示词（非空时覆盖 style_preset）",
+      "default": ""
+    },
+    "show_final_prompt": {
+      "type": "bool",
+      "description": "返回时是否显示最终英文 prompt",
+      "default": false
+    },
+    "prompt_mode": {
+      "type": "string",
+      "description": "Prompt 改写模式：conservative / enhanced / creative",
+      "default": "enhanced"
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "description": "图片宽高比",
+      "default": "1:1",
+      "hint": "1:1 / 16:9 / 4:3 / 3:2 / 3:4 / 4:5 / 9:16 / 21:9"
+    },
+    "image_size": {
+      "type": "string",
+      "description": "图片分辨率",
+      "default": "1K",
+      "hint": "512 / 1K / 2K / 4K"
+    },
+    "request_timeout": {
+      "type": "int",
+      "description": "API 请求超时（秒）",
+      "default": 120
+    },
+    "proxy_url": {
+      "type": "string",
+      "description": "代理地址（留空表示 AstrBot 已配代理或直连）",
+      "default": ""
+    },
+    "max_retry": {
+      "type": "int",
+      "description": "失败重试次数",
+      "default": 2
+    },
+    "single_user_concurrency": {
+      "type": "int",
+      "description": "单用户最大并发数",
+      "default": 1
+    },
+    "global_concurrency": {
+      "type": "int",
+      "description": "全局最大并发数",
+      "default": 3
+    },
+    "delete_temp_after_send": {
+      "type": "bool",
+      "description": "发送后自动删除临时文件",
+      "default": true
+    },
+    "cleanup_interval_minutes": {
+      "type": "int",
+      "description": "残留文件清理间隔（分钟）",
+      "default": 30
+    }
+  },
+  "ui": {
+    "api_key": {
+      "ui:password": true
+    }
+  }
+}

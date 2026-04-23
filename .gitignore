@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code
+.claude/
+
+# Temp images
+src/temp/*.png
+!src/temp/.gitkeep
+
+# OS
+Thumbs.db
+.DS_Store
