@@ -358,63 +358,65 @@ event.unified_msg_origin     # 消息源标识（用于定位回话）
 ```json
 {
   "schema": {
-    "api_key": {
-      "type": "string",
-      "description": "Gemini API Key",
-      "default": ""
-    },
     "model": {
       "type": "string",
-      "description": "模型名称",
+      "description": "Gemini 图像模型名称",
       "default": "gemini-3.1-flash-image-preview",
       "hint": "gemini-3.1-flash-image-preview / gemini-3-pro-image-preview"
     },
-    "enable_chat_trigger": {
-      "type": "bool",
-      "description": "是否启用聊天触发",
-      "default": true
-    },
-    "chat_trigger_text": {
+    "style_preset": {
       "type": "string",
-      "description": "聊天触发词（文生图）",
-      "default": "帮我画"
+      "description": "风格预设：auto / realistic / anime / watercolor / cinematic / illustration",
+      "default": "auto"
     },
-    "draw_command": {
+    "prompt_mode": {
       "type": "string",
-      "description": "文生图命令名",
-      "default": "draw"
+      "description": "Prompt 改写模式：conservative / enhanced / creative",
+      "default": "enhanced"
     },
-    "show_final_prompt": {
-      "type": "bool",
-      "description": "是否返回时显示英文 prompt",
-      "default": false
-    },
-    "poll_interval": {
-      "type": "int",
-      "description": "轮询间隔（秒）",
-      "default": 5
-    }
-  },
-  "ui": {
-    "api_key": {
-      "ui:password": true
+    "proxy_url": {
+      "type": "string",
+      "description": "代理地址",
+      "default": ""
     }
   }
 }
 ```
 
-### 5.2 在插件中读取配置
+> 注意：插件已移除 `api_key` 配置项。API Key 通过 AstrBot 的 Google Gemini 模型提供商自动获取，无需在插件中重复配置。
 
-配置在 `__init__` 时已自动注入 `config: dict` 参数。
+### 5.2 API Key 自动发现机制
+
+本插件已移除独立的 `api_key` 配置项。`GeminiProvider` 在初始化时自动从 AstrBot 已配置的 provider 中查找 Google/Gemini 类型的提供商并提取 API Key。
 
 ```python
-class ImageGenPlugin(Star):
-    def __init__(self, context: Context, config: dict):
-        super().__init__(context)
+class GeminiProvider:
+    def __init__(self, config: dict, context=None):
+        # 优先从插件配置读取（兼容旧配置）
         self.api_key = config.get("api_key", "")
-        self.model = config.get("model", "gemini-3.1-flash-image-preview")
-        self.show_final_prompt = config.get("show_final_prompt", False)
+
+        # 未配置时从 AstrBot provider 自动发现
+        if not self.api_key and context:
+            self.api_key = self._discover_api_key(context)
+
+    @staticmethod
+    def _discover_api_key(context) -> str:
+        """从 AstrBot 已配置的 provider 中自动发现 Gemini API Key"""
+        providers = context.get_all_providers()
+        for provider in providers:
+            meta = provider.meta()
+            type_name = (meta.type or "").lower()
+            if "gemini" in type_name or "google" in type_name:
+                keys = provider.get_keys()
+                if keys and keys[0]:
+                    return keys[0]
+        return ""
 ```
+
+**配置策略：**
+- 用户只需在 AstrBot 管理面板添加 Google Gemini 模型提供商并填入 API Key
+- 插件自动发现并使用该 Key
+- 旧部署的插件配置中若仍有 `api_key`，会优先使用，不会断掉
 
 ### 5.3 访问 AstrBot 全局配置
 
