@@ -1,10 +1,5 @@
 {
   "schema": {
-    "api_key": {
-      "type": "string",
-      "description": "Gemini API Key",
-      "default": ""
-    },
     "model": {
       "type": "string",
       "description": "Gemini 图像模型名称",
@@ -107,11 +102,6 @@
       "type": "int",
       "description": "残留文件清理间隔（分钟）",
       "default": 30
-    }
-  },
-  "ui": {
-    "api_key": {
-      "ui:password": true
     }
   }
 }

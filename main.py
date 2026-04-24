@@ -30,7 +30,7 @@ class ImageGenPlugin(Star):
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
         # 模块初始化
-        self.provider = GeminiProvider(config)
+        self.provider = GeminiProvider(config, context=context)
         self.prompt_agent = PromptAgent(context, config)
         self.task_store = TaskStore()
         self.task_manager = TaskManager(config, self.provider, self.task_store)

@@ -90,6 +90,7 @@
 
 **待完成：**
 - [ ] 完整运行时验证（需要 AstrBot 环境 + Gemini API Key + 代理）
+- [ ] `_special` provider 选择器集成（当前自动发现 Gemini provider 的 Key，后续可增加 WebUI Provider 选择器）
 
 ---
 
@@ -98,3 +99,4 @@
 - **代理问题：** `ai.google.dev` 国内网络不可直接访问。插件通过 `proxy_url` 配置项支持代理
 - **验证环境：** 需要 AstrBot 运行环境 + 配置 Gemini API Key + 代理才能完整验证
 - **Image.convert_to_base64() 返回格式：** 参考插件中处理了 `data:image/...` 前缀，Gemini provider 发送时已拼接正确格式
+- **API Key 管理：** 已移除 `_conf_schema.json` 中的 `api_key` 配置项。插件优先从 AstrBot 的 Google Gemini provider 自动发现 Key，兼容手动在插件配置中设置 `api_key`

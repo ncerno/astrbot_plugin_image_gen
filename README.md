@@ -15,7 +15,7 @@
 ### 前提条件
 
 1. 已部署 [AstrBot](https://github.com/AstrBotDevs/AstrBot)（≥ v4.16）
-2. 拥有 [Gemini API Key](https://aistudio.google.com/apikey)（需科学上网获取）
+2. 在 AstrBot 管理面板中已添加 **Google Gemini** 模型提供商并配置好 API Key
 3. 部署机器可访问 `generativelanguage.googleapis.com`（国内机器需配置代理）
 
 ### 安装步骤
@@ -48,13 +48,7 @@ pip install -r requirements.txt
 
 ### 配置说明
 
-安装后，在 AstrBot 管理面板找到「图片生成」插件，填写以下配置：
-
-#### 必填项
-
-| 配置项 | 说明 | 获取方式 |
-|--------|------|----------|
-| `api_key` | Gemini API Key | [Google AI Studio](https://aistudio.google.com/apikey) |
+安装后，在 AstrBot 管理面板找到「图片生成」插件。插件会自动使用 AstrBot 中已配置的 **Google Gemini** 模型提供商的 API Key，无需单独填写。
 
 #### 网络配置（国内机器必填）
 
@@ -103,11 +97,11 @@ pip install -r requirements.txt
 **Q：生成失败，提示网络错误？**
 A：国内机器访问 Google API 需要代理。在配置中设置 `proxy_url`，如 `http://127.0.0.1:7890`。
 
-**Q：API Key 怎么获取？**
-A：访问 https://aistudio.google.com/apikey ，登录 Google 账号后点击「Create API Key」。
+**Q：API Key 怎么配置？**
+A：在 AstrBot 管理面板 →「模型提供商」中添加一个 **Google Gemini** 类型的提供商，填入 API Key。插件会自动使用该 Key。如果 Key 不在 Gemini 提供商中，可以在插件配置中手动填入 `api_key`。
 
 **Q：提示"API Key 未配置"？**
-A：安装后在管理面板的插件配置中填入 `api_key`，然后重启 AstrBot。
+A：检查 AstrBot 管理面板中是否已配置 Google Gemini 模型提供商并已启用。如果不想通过 AstrBot 管理 Key，可以在插件配置中添加 `api_key` 字段。
 
 **Q：生成的图片质量不理想？**
 A：尝试切换到更详细的 prompt 模式：将 `prompt_mode` 设为 `creative`，或使用风格预设。
