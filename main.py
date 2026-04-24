@@ -5,6 +5,8 @@ from astrbot.api.message_components import Image, Plain
 
 from src.prompt.agent import PromptAgent
 from src.provider.gemini import GeminiProvider
+from src.provider.openai import OpenAIProvider
+from src.provider.base import ImageProvider
 from src.storage.state import TaskStore
 from src.task.manager import TaskManager
 
@@ -17,8 +19,8 @@ from datetime import datetime
 @register(
     "astrbot_plugin_image_gen",
     "nero",
-    "基于 Gemini 3.1 Flash Image 的文生图/图生图插件",
-    "0.1.0",
+    "基于 Gemini / OpenAI 兼容 API 的文生图/图生图插件",
+    "0.2.0",
 )
 class ImageGenPlugin(Star):
     def __init__(self, context: Context, config: dict):
@@ -29,23 +31,132 @@ class ImageGenPlugin(Star):
         self.temp_dir = Path("src/temp")
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
+        # 解析 Provider
+        self.provider: ImageProvider | None = None
+        try:
+            self.provider = self._resolve_provider(context, config)
+        except Exception as e:
+            logger.error(f"初始化图像 Provider 失败: {e}")
+
         # 模块初始化
-        self.provider = GeminiProvider(config, context=context)
         self.prompt_agent = PromptAgent(context, config)
         self.task_store = TaskStore()
         self.task_manager = TaskManager(config, self.provider, self.task_store)
 
         # 配置值缓存
-        self.enable_chat_trigger = config.get("enable_chat_trigger", True)
-        self.chat_trigger_t2i = config.get("chat_trigger_text2img", "帮我画")
-        self.chat_trigger_i2i = config.get("chat_trigger_img2img", "帮我改图")
-        self.draw_command = config.get("draw_command", "draw")
-        self.imgedit_command = config.get("imgedit_command", "imgedit")
-        self.drawraw_command = config.get("drawraw_command", "drawraw")
+        self.draw_cmd = config.get("draw_command", "draw")
+        self.imgedit_cmd = config.get("imgedit_command", "imgedit")
+        self.drawraw_cmd = config.get("drawraw_command", "drawraw")
         self.delete_temp = config.get("delete_temp_after_send", True)
         self.show_final_prompt = config.get("show_final_prompt", False)
 
-        logger.info(f"图片生成插件已加载，模型: {config.get('model', 'gemini-3.1-flash-image-preview')}")
+        if self.provider:
+            logger.info(
+                f"图片生成插件已加载: {type(self.provider).__name__}, "
+                f"模型: {config.get('model', '')}"
+            )
+        else:
+            logger.warning("图片生成插件已加载，但未配置 Provider")
+
+    # ── Provider 解析 ──────────────────────────────────
+
+    def _resolve_provider(self, context: Context, config: dict) -> ImageProvider | None:
+        """解析图像生成 Provider
+
+        优先级：
+        1. _special: select_provider → 用户选定的 AstrBot provider
+        2. 自动发现 → 第一个有 API Key 的 provider
+        3. 备用手动配置 fallback_*
+        """
+        provider_id = config.get("provider_id", "")
+        model = config.get("model", "gemini-3.1-flash-image-preview")
+        api_key = ""
+        api_url = ""
+
+        # ── 从 AstrBot provider 获取 ──
+        api_key, api_url, is_gemini = self._discover_from_astrbot(
+            context, provider_id
+        )
+
+        # ── 手动 URL 覆盖 ──
+        manual_url = config.get("provider_endpoint_url", "").strip()
+        if manual_url:
+            api_url = manual_url
+
+        # ── 若自动发现成功，构建 provider ──
+        if api_key:
+            return self._build_provider(api_key, api_url, model, config, is_gemini)
+
+        # ── 备用手动配置 ──
+        fallback_key = config.get("fallback_api_key", "").strip()
+        fallback_url = config.get("fallback_api_url", "").strip()
+        fallback_model = config.get("fallback_model", "").strip()
+
+        if fallback_key and fallback_url:
+            fb_model = fallback_model or model
+            fb_is_gemini = "google" in fallback_url.lower() or "gemini" in fallback_url.lower()
+            return self._build_provider(fallback_key, fallback_url, fb_model, config, fb_is_gemini)
+
+        logger.warning(
+            "无法初始化图像生成 Provider。请在管理面板中："
+            "① 配置模型提供商并通过 provider_id 选择；"
+            "② 或在备用配置中填写 API Key 和 URL。"
+        )
+        return None
+
+    def _discover_from_astrbot(self, context: Context,
+                                target_id: str) -> tuple[str, str, bool]:
+        """从 AstrBot providers 发现 API Key 和类型
+
+        Returns:
+            (api_key, api_url, is_gemini)
+        """
+        try:
+            providers = context.get_all_providers()
+            for p in providers:
+                meta = p.meta()
+                if target_id and meta.id != target_id:
+                    continue
+
+                keys = p.get_keys()
+                if not keys or not keys[0]:
+                    continue
+
+                api_key = keys[0]
+                type_name = (meta.type or "").lower()
+                is_gemini = "gemini" in type_name or "google" in type_name
+
+                # 获取 base URL（仅非 Gemini 需要）
+                api_url = ""
+                if not is_gemini:
+                    api_url = (
+                        getattr(p, "base_url", None)
+                        or getattr(p, "api_base", None)
+                        or ""
+                    )
+
+                provider_label = meta.id or meta.model or "unknown"
+                logger.info(
+                    f"从 AstrBot provider '{provider_label}' 获取配置: "
+                    f"{'Gemini' if is_gemini else 'OpenAI兼容'}"
+                )
+                return api_key, api_url, is_gemini
+
+        except Exception as e:
+            logger.warning(f"从 AstrBot 自动获取 provider 失败: {e}")
+
+        return "", "", False
+
+    @staticmethod
+    def _build_provider(api_key: str, api_url: str, model: str,
+                        config: dict, is_gemini: bool) -> ImageProvider:
+        """根据类型构建 provider 实例"""
+        if is_gemini:
+            return GeminiProvider(api_key, model, config)
+        else:
+            return OpenAIProvider(api_key, api_url, model, config)
+
+    # ── 消息路由（## 命令） ──────────────────────────────
 
     async def initialize(self):
         """插件初始化——启动定时清理任务"""
@@ -60,64 +171,53 @@ class ImageGenPlugin(Star):
         self._cleanup_temp()
         logger.info("图片生成插件已卸载")
 
-    # ── 命令路由 ──────────────────────────────────────
-
-    @filter.command("draw")
-    async def draw(self, event: AstrMessageEvent, prompt: str = ""):
-        """文生图：/draw <描述>"""
-        if not prompt:
-            yield event.plain_result(f"用法：/{self.draw_command} <图片描述>")
-            return
-        async for result in self._handle_text2img(event, prompt):
-            yield result
-
-    @filter.command("imgedit")
-    async def imgedit(self, event: AstrMessageEvent, prompt: str = ""):
-        """图生图：/imgedit <修改描述>（需同时发送参考图）"""
-        if not prompt:
-            yield event.plain_result(f"用法：/{self.imgedit_command} <修改描述>（需同时发送参考图片）")
-            return
-        async for result in self._handle_img2img(event, prompt):
-            yield result
-
-    @filter.command("drawraw")
-    async def drawraw(self, event: AstrMessageEvent, prompt: str = ""):
-        """跳过 LLM 扩写，直接提交 Gemini 生图"""
-        if not prompt:
-            yield event.plain_result(f"用法：/{self.drawraw_command} <英文 prompt>")
-            return
-        async for result in self._handle_text2img(event, prompt, skip_prompt_agent=True):
-            yield result
-
-    # ── 聊天触发 ──────────────────────────────────────
+    # ── 消息路由（## 命令） ──────────────────────────────
 
     async def on_message(self, event: AstrMessageEvent):
-        """监听普通消息，检测聊天触发词"""
-        if not self.enable_chat_trigger:
-            return
-
+        """监听 ##draw / ##imgedit / ##drawraw 命令"""
         text = event.message_str.strip()
 
-        # 文生图触发
-        if text.startswith(self.chat_trigger_t2i):
-            prompt = text[len(self.chat_trigger_t2i):].strip()
+        # 按最长前缀优先匹配
+        if text.startswith("##" + self.drawraw_cmd):
+            prompt = text[len("##" + self.drawraw_cmd):].strip()
             if prompt:
-                async for result in self._handle_text2img(event, prompt):
+                async for result in self._handle_text2img(event, prompt, skip_prompt_agent=True):
                     yield result
             return
 
-        # 图生图触发
-        if text.startswith(self.chat_trigger_i2i):
-            prompt = text[len(self.chat_trigger_i2i):].strip()
+        if text.startswith("##" + self.imgedit_cmd):
+            prompt = text[len("##" + self.imgedit_cmd):].strip()
             if prompt:
                 async for result in self._handle_img2img(event, prompt):
                     yield result
             return
 
+        if text.startswith("##" + self.draw_cmd):
+            prompt = text[len("##" + self.draw_cmd):].strip()
+            if prompt:
+                async for result in self._handle_text2img(event, prompt):
+                    yield result
+            return
+
     # ── 核心处理流程 ──────────────────────────────────
 
-    async def _handle_text2img(self, event: AstrMessageEvent, prompt: str, skip_prompt_agent: bool = False):
+    def _check_provider(self, event: AstrMessageEvent):
+        """检查 provider 是否可用"""
+        if not self.provider:
+            return event.plain_result(
+                "插件未配置：请在管理面板中配置模型提供商（provider_id），"
+                "或填写备用 API Key 和 URL。"
+            )
+        return None
+
+    async def _handle_text2img(self, event: AstrMessageEvent, prompt: str,
+                                skip_prompt_agent: bool = False):
         """文生图流程"""
+        err = self._check_provider(event)
+        if err:
+            yield err
+            return
+
         yield event.plain_result("正在生成图片，请稍候……")
 
         try:
@@ -132,7 +232,7 @@ class ImageGenPlugin(Star):
 
             logger.info(f"文生图 | prompt: {final_prompt[:100]}")
 
-            # 2. 通过 TaskManager 调用（含并发控制 + 自动重试）
+            # 2. 通过 TaskManager 调用
             task_id = uuid.uuid4().hex
             self.task_store.create(task_id, {"user_id": event.get_sender_id()})
             task_result = await self.task_manager.run_text2img(final_prompt, task_id)
@@ -166,23 +266,36 @@ class ImageGenPlugin(Star):
 
     async def _handle_img2img(self, event: AstrMessageEvent, prompt: str):
         """图生图流程"""
-        # 1. 从消息中提取图片
+        err = self._check_provider(event)
+        if err:
+            yield err
+            return
+
+        # 1. 检查 provider 是否支持图生图
+        if not self.provider.supports_img2img:
+            yield event.plain_result(
+                "当前模型不支持图生图功能。请使用 Gemini 模型，"
+                "或切换到文生图模式（##draw）。"
+            )
+            return
+
+        # 2. 从消息中提取图片
         image_base64 = await self._extract_image(event)
         if not image_base64:
-            yield event.plain_result("请同时发送一张参考图片")
+            yield event.plain_result("请同时发送一张参考图片（仅支持 JPG/PNG，大小 < 10MB）")
             return
 
         yield event.plain_result("正在处理图片编辑，请稍候……")
 
         try:
-            # 2. Prompt 改写
+            # 3. Prompt 改写
             result = await self.prompt_agent.rewrite(prompt, mode="img2img")
             final_prompt = result["final_prompt_en"]
             brief_zh = result.get("brief_zh", "")
 
             logger.info(f"图生图 | prompt: {final_prompt[:100]}")
 
-            # 3. 通过 TaskManager 调用（含并发控制 + 自动重试）
+            # 4. 通过 TaskManager 调用
             task_id = uuid.uuid4().hex
             self.task_store.create(task_id, {"user_id": event.get_sender_id()})
             task_result = await self.task_manager.run_img2img(final_prompt, image_base64, task_id)
@@ -193,10 +306,10 @@ class ImageGenPlugin(Star):
 
             image_data = task_result["image_base64"]
 
-            # 4. 保存临时文件
+            # 5. 保存临时文件
             file_path = self._save_temp(image_data)
 
-            # 5. 构建返回消息
+            # 6. 构建返回消息
             reply_parts = []
             if brief_zh:
                 reply_parts.append(Plain(brief_zh + "\n"))
@@ -206,7 +319,7 @@ class ImageGenPlugin(Star):
 
             yield event.chain_result(reply_parts)
 
-            # 6. 清理
+            # 7. 清理
             if self.delete_temp:
                 file_path.unlink(missing_ok=True)
 

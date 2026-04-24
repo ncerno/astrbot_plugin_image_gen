@@ -8,6 +8,7 @@
 | 2 | 文生图 MVP | ✅ 完成 |
 | 3 | 图生图 | ✅ 完成 |
 | 4 | 收尾增强 | ✅ 完成 |
+| 5 | 双 Provider 架构 + ## 命令 | ✅ 完成 |
 | -- | 运行时验证 | ⬜ 待验证 |
 
 ---
@@ -33,8 +34,6 @@
 - [x] `src/prompt/agent.py` — Prompt Agent 骨架（降级模式：原文直出）
 - [x] `src/temp/` — 临时图片目录
 
-**下一步：** 实现 Prompt Agent 的 LLM 调用，将中文改写为英文 prompt
-
 ---
 
 ## 阶段 2：文生图 MVP ✅
@@ -52,24 +51,17 @@
 - [x] 中文简述返回
 - [x] LLM 返回解析 + 降级兜底
 
-**关键确认：**
-- `Context.llm_generate()` 方法用于调用 AstrBot 当前 LLM
-- `context.get_all_providers()` 获取可用 provider 列表
-- `context.get_current_chat_provider_id(umo)` 获取当前会话使用的 provider
-
 ---
 
 ## 阶段 3：图生图 ✅
+
+**日期：** 2026-04-23
 
 **已完成：**
 - [x] Gemini provider 图生图已实现（`image_to_image`）
 - [x] `/imgedit` 命令
 - [x] 聊天触发"帮我改图"
 - [x] 从用户消息中提取图片（`Image.convert_to_base64()`）
-
-**注意：**
-- Gemini 3.1 Flash Image 的图生图是编辑模式：传入参考图 + 修改描述，模型自动处理
-- 不是独立的两阶段流程，而是单次 API 调用
 
 ---
 
@@ -85,18 +77,54 @@
 - [x] Prompt Agent 三种模式切换
 - [x] `/drawraw` 命令（跳过 LLM 扩写直接生图）
 - [x] `show_final_prompt` 配置在返回中的展示
-- [x] 基础64 data URI 前缀处理（兼容 convert_to_base64 带前缀的情况，provider + _save_temp 双保险）
-- [x] TaskManager 并发控制/重试逻辑接入主流程（原代码直接调 provider 跳过了 task_manager）
+- [x] base64 data URI 前缀处理（兼容 convert_to_base64 带前缀的情况，provider + _save_temp 双保险）
+- [x] TaskManager 并发控制/重试逻辑接入主流程
 
-**待完成：**
-- [ ] 完整运行时验证（需要 AstrBot 环境 + Gemini API Key + 代理）
-- [ ] `_special` provider 选择器集成（当前自动发现 Gemini provider 的 Key，后续可增加 WebUI Provider 选择器）
+---
+
+## 阶段 5：双 Provider 架构 + ## 命令 ✅
+
+**日期：** 2026-04-24
+
+**背景：** 实际测试中发现：① AstrBot 无 Gemini 专用 provider，用户使用 OpenAI 兼容的中转站；② 自动发现 API Key 失败；③ 需要支持非 Gemini 模型作为备选。
+
+**已完成：**
+- [x] `src/provider/base.py` — `ImageProvider` 抽象基类，定义 `text_to_image` / `image_to_image` 接口
+- [x] `src/provider/openai.py` — OpenAI 兼容格式 Provider（`/v1/images/generations`），含尺寸映射
+- [x] `src/provider/gemini.py` — 重构为继承 `ImageProvider`，移除自动发现和 proxy
+- [x] 命令前缀从 `/` 改为 `##`：`##draw` / `##imgedit` / `##drawraw`
+- [x] 移除中文聊天触发词（"帮我画"、"帮我改图"）
+- [x] 移除 `proxy_url` 配置项
+- [x] `provider_id`（`_special: select_provider`）下拉选择 AstrBot 模型提供商
+- [x] `provider_endpoint_url` — 手动覆盖 API 端点
+- [x] `options` 下拉选择器 — style_preset / prompt_mode / aspect_ratio / image_size
+- [x] `fallback_api_key` / `fallback_api_url` / `fallback_model` 备用配置段（invisible）
+- [x] Provider 自动发现逻辑（`_resolve_provider`）：选择 → 自动发现 → 备用
+- [x] Provider 类型自动识别（Gemini vs OpenAI）
+- [x] 无 Provider 时命令提示"插件未配置"
+- [x] `##imgedit` 对非 Gemini provider 提示"不支持图生图"
+- [x] 所有文档已更新（README, dev_guide, progress）
+
+**设计决策：**
+- 双 provider 并存：GeminiProvider（主要，完整功能） + OpenAIProvider（备用，仅文生图）
+- 类型识别基于 `meta().type`：
+  - 含 `google` / `gemini` → GeminiProvider（使用 Gemini REST API）
+  - 其他类型 → OpenAIProvider（使用 OpenAI 兼容接口）
+- 图生图仅 Gemini 支持，OpenAI 尝试 `/v1/images/edits` 但不保证兼容
+- `style_preset` / `custom_style_prompt` / `aspect_ratio` 保留但仅 Gemini 生效
+- 代理交由系统环境变量 `http_proxy` / `https_proxy`
+
+**待验证：**
+- [ ] 通过 `_special: select_provider` 选择中转站 provider 后能否正常文生图
+- [ ] 备用配置直接填写中转站 API Key + URL 能否工作
+- [ ] Gemini API Key 自动发现（有 Google provider 时）
+- [ ] `##draw` 命令不带空格能否正确解析（`##draw一只猫`）
+- [ ] 无 Provider 时是否给出清晰提示
 
 ---
 
 ## 待定项
 
-- **代理问题：** `ai.google.dev` 国内网络不可直接访问。插件通过 `proxy_url` 配置项支持代理
-- **验证环境：** 需要 AstrBot 运行环境 + 配置 Gemini API Key + 代理才能完整验证
+- **验证环境：** 需要 AstrBot 运行环境才能完整验证
 - **Image.convert_to_base64() 返回格式：** 参考插件中处理了 `data:image/...` 前缀，Gemini provider 发送时已拼接正确格式
-- **API Key 管理：** 已移除 `_conf_schema.json` 中的 `api_key` 配置项。插件优先从 AstrBot 的 Google Gemini provider 自动发现 Key，兼容手动在插件配置中设置 `api_key`
+- **OpenAI edits 端点：** `/v1/images/edits` 多数中转站不支持，图生图实际仅 Gemini

@@ -1,82 +1,60 @@
 {
   "schema": {
+    "provider_id": {
+      "type": "string",
+      "_special": "select_provider",
+      "description": "选择 AstrBot 中已配置的模型提供商。插件将自动获取 API Key 和端点。留空则自动发现。",
+      "default": ""
+    },
     "model": {
       "type": "string",
-      "description": "Gemini 图像模型名称",
+      "description": "图像模型名称（Gemini: gemini-3.1-flash-image-preview, OpenAI: dall-e-3）",
       "default": "gemini-3.1-flash-image-preview",
-      "hint": "gemini-3.1-flash-image-preview / gemini-3-pro-image-preview"
+      "hint": "Gemini 图像模型 / OpenAI 图像模型 / 中转站自定义模型名"
     },
-    "enable_chat_trigger": {
-      "type": "bool",
-      "description": "是否启用聊天触发（非命令触发）",
-      "default": true
-    },
-    "chat_trigger_text2img": {
+    "provider_endpoint_url": {
       "type": "string",
-      "description": "文生图聊天触发词",
-      "default": "帮我画"
-    },
-    "chat_trigger_img2img": {
-      "type": "string",
-      "description": "图生图聊天触发词",
-      "default": "帮我改图"
-    },
-    "draw_command": {
-      "type": "string",
-      "description": "文生图命令名",
-      "default": "draw"
-    },
-    "imgedit_command": {
-      "type": "string",
-      "description": "图生图命令名",
-      "default": "imgedit"
-    },
-    "drawraw_command": {
-      "type": "string",
-      "description": "跳过 LLM 扩写直接生图命令名",
-      "default": "drawraw"
+      "description": "手动指定 API 端点 URL（自动获取失败时填写。示例：https://api.openai.com/v1）",
+      "default": ""
     },
     "style_preset": {
       "type": "string",
-      "description": "默认风格预设：auto / realistic / anime / watercolor / cinematic / illustration",
-      "default": "auto"
+      "description": "风格预设（仅 Gemini 有效，非 Gemini 模型自动忽略）",
+      "default": "auto",
+      "options": ["auto", "realistic", "anime", "watercolor", "cinematic", "illustration"]
     },
     "custom_style_prompt": {
       "type": "string",
-      "description": "自定义风格提示词（非空时覆盖 style_preset）",
+      "description": "自定义风格提示词（非空时覆盖 style_preset，仅 Gemini 有效）",
       "default": ""
+    },
+    "prompt_mode": {
+      "type": "string",
+      "description": "Prompt 改写模式",
+      "default": "enhanced",
+      "options": ["conservative", "enhanced", "creative"]
     },
     "show_final_prompt": {
       "type": "bool",
       "description": "返回时是否显示最终英文 prompt",
       "default": false
     },
-    "prompt_mode": {
-      "type": "string",
-      "description": "Prompt 改写模式：conservative / enhanced / creative",
-      "default": "enhanced"
-    },
     "aspect_ratio": {
       "type": "string",
-      "description": "图片宽高比",
+      "description": "图片宽高比（仅 Gemini 有效）",
       "default": "1:1",
-      "hint": "1:1 / 16:9 / 4:3 / 3:2 / 3:4 / 4:5 / 9:16 / 21:9"
+      "options": ["1:1", "16:9", "4:3", "3:2", "3:4", "4:5", "9:16", "21:9"]
     },
     "image_size": {
       "type": "string",
       "description": "图片分辨率",
       "default": "1K",
-      "hint": "512 / 1K / 2K / 4K"
+      "options": ["512", "1K", "2K", "4K"]
     },
     "request_timeout": {
       "type": "int",
       "description": "API 请求超时（秒）",
       "default": 120
-    },
-    "proxy_url": {
-      "type": "string",
-      "description": "代理地址（留空表示 AstrBot 已配代理或直连）",
-      "default": ""
     },
     "max_retry": {
       "type": "int",
@@ -102,6 +80,24 @@
       "type": "int",
       "description": "残留文件清理间隔（分钟）",
       "default": 30
+    },
+    "fallback_api_key": {
+      "type": "string",
+      "description": "备用：手动配置 API Key（自动发现失败时使用）",
+      "default": "",
+      "invisible": true
+    },
+    "fallback_api_url": {
+      "type": "string",
+      "description": "备用：手动配置 API 端点 URL",
+      "default": "",
+      "invisible": true
+    },
+    "fallback_model": {
+      "type": "string",
+      "description": "备用：手动配置模型名",
+      "default": "",
+      "invisible": true
     }
   }
 }

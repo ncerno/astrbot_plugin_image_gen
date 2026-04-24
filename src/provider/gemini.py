@@ -1,51 +1,26 @@
-# Gemini Image Provider 模块
-# 封装 Gemini 3.1 Flash Image 的 REST API 调用
+# Gemini 3.1 Flash Image Provider
+# 封装 Gemini REST API（文生图 + 图生图）
 
 import httpx
 from astrbot.api import logger
+from .base import ImageProvider
 
 
-class GeminiProvider:
+class GeminiProvider(ImageProvider):
     """Gemini 3.1 Flash Image 图像生成/编辑封装"""
 
-    def __init__(self, config: dict, context=None):
-        self.api_key = ""
-        self.model = config.get("model", "gemini-3.1-flash-image-preview")
+    def __init__(self, api_key: str, model: str, config: dict):
+        self.api_key = api_key
+        self.model = model or "gemini-3.1-flash-image-preview"
         self.timeout = config.get("request_timeout", 120)
         self.aspect_ratio = config.get("aspect_ratio", "1:1")
         self.image_size = config.get("image_size", "1K")
-        self.proxy_url = config.get("proxy_url", "")
 
-        # 优先从插件配置读取（兼容旧配置），否则从 AstrBot provider 自动发现
-        self.api_key = config.get("api_key", "")
-        if not self.api_key and context:
-            self.api_key = self._discover_api_key(context)
+        logger.info(f"GeminiProvider 初始化: model={self.model}")
 
-        if not self.api_key:
-            logger.warning(
-                "Gemini API Key 未配置。请在 AstrBot 中添加 Google Gemini 模型提供商，"
-                "或在插件配置中设置 api_key。"
-            )
-
-    @staticmethod
-    def _discover_api_key(context) -> str:
-        """从 AstrBot 已配置的 provider 中自动发现 Gemini API Key"""
-        try:
-            providers = context.get_all_providers()
-            for provider in providers:
-                meta = provider.meta()
-                # 匹配 gemini 或 google 类型的 provider
-                type_name = (meta.type or "").lower()
-                if "gemini" in type_name or "google" in type_name:
-                    keys = provider.get_keys()
-                    if keys and keys[0]:
-                        logger.info(
-                            f"从 AstrBot provider '{meta.id}' 自动获取 API Key"
-                        )
-                        return keys[0]
-        except Exception as e:
-            logger.warning(f"自动获取 API Key 失败: {e}")
-        return ""
+    @property
+    def supports_img2img(self) -> bool:
+        return True
 
     def _build_url(self) -> str:
         return (
@@ -60,20 +35,21 @@ class GeminiProvider:
         }
 
     def _build_config(self) -> dict:
-        config = {
-            "responseModalities": ["Image", "Text"],
-        }
-        image_config = {}
+        cfg = {"responseModalities": ["Image", "Text"]}
+        image_cfg = {}
         if self.aspect_ratio:
-            image_config["aspectRatio"] = self.aspect_ratio
+            image_cfg["aspectRatio"] = self.aspect_ratio
         if self.image_size:
-            image_config["imageSize"] = self.image_size
-        if image_config:
-            config["imageConfig"] = image_config
-        return config
+            image_cfg["imageSize"] = self.image_size
+        if image_cfg:
+            cfg["imageConfig"] = image_cfg
+        return cfg
 
     async def text_to_image(self, prompt: str) -> str:
         """文生图：返回 base64 图片数据"""
+        if not self.api_key:
+            raise ValueError("Gemini API Key 未配置")
+
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": self._build_config(),
@@ -86,13 +62,16 @@ class GeminiProvider:
         if data and data.startswith("data:"):
             if "," in data:
                 header, raw = data.split(",", 1)
-                mime = header[5:].split(";")[0]  # "data:image/png;base64" → "image/png"
+                mime = header[5:].split(";")[0]
                 return raw, mime
         return data, ""
 
     async def image_to_image(self, prompt: str, reference_base64: str,
                              mime_type: str = "image/png") -> str:
         """图生图：基于参考图 + 描述编辑"""
+        if not self.api_key:
+            raise ValueError("Gemini API Key 未配置")
+
         clean_base64, detected_mime = self._strip_data_uri_prefix(reference_base64)
         payload = {
             "contents": [{
@@ -112,11 +91,7 @@ class GeminiProvider:
 
     async def _call_api(self, payload: dict) -> str:
         """调用 Gemini API 并提取图片 base64 数据"""
-        if not self.api_key:
-            raise ValueError("Gemini API Key 未配置")
-
-        proxy = self.proxy_url or None  # httpx 用 None 表示不设代理
-        async with httpx.AsyncClient(proxy=proxy, timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(
                 self._build_url(),
                 json=payload,
